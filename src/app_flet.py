@@ -55,15 +55,21 @@ def main(page: ft.Page) -> None:
         preview_img.data = _png_bytes(preview)
         page.update()
 
+    snack = ft.SnackBar(ft.Text(""))
+    snack.open = False
+
+    def notify(message: str) -> None:
+        snack.content = ft.Text(message)
+        snack.open = True
+        page.update()
+
     def pick_image(e: ft.FilePickerResultEvent) -> None:
         if not e.files:
             return
         try:
             state["source"] = Image.open(e.files[0].path)
         except Exception as exc:
-            page.snack_bar = ft.SnackBar(ft.Text(f"Erro ao abrir: {exc}"))
-            page.snack_bar.open = True
-            page.update()
+            notify(f"Erro ao abrir: {exc}")
             return
         update_preview()
 
@@ -78,9 +84,7 @@ def main(page: ft.Page) -> None:
         if not path:
             return
         state["result"].save(path)
-        page.snack_bar = ft.SnackBar(ft.Text(f"Salvo em: {path}"))
-        page.snack_bar.open = True
-        page.update()
+        notify(f"Salvo em: {path}")
 
     async def save_enhanced(e: ft.ControlEvent) -> None:
         if state["result"] is None:
@@ -100,19 +104,19 @@ def main(page: ft.Page) -> None:
             Image.LANCZOS,
         )
         enlarged.save(path)
-        page.snack_bar = ft.SnackBar(ft.Text(f"Salvo aprimorado em: {path}"))
-        page.snack_bar.open = True
-        page.update()
+        notify(f"Salvo aprimorado em: {path}")
 
     open_picker = ft.FilePicker(on_result=pick_image)
     save_picker = ft.FilePicker()
-    page.overlay += [open_picker, save_picker]
+    page.overlay.append(open_picker)
+    page.overlay.append(save_picker)
+    page.overlay.append(snack)
 
     pixel_slider = ft.Slider(min=1, max=64, value=8, divisions=63, label="{value}", on_change=lambda _: update_preview())
     colors_slider = ft.Slider(min=2, max=256, value=16, divisions=254, label="{value}", on_change=lambda _: update_preview())
     dither_switch = ft.Switch(label="Dithering", value=False, on_change=lambda _: update_preview())
 
-    preview_img = ft.Image(src="", width=PREVIEW_WIDTH, height=PREVIEW_HEIGHT, fit=ft.ImageFit.CONTAIN, border_radius=8)
+    preview_img = ft.Image(src="", width=PREVIEW_WIDTH, height=PREVIEW_HEIGHT, fit=ft.BoxFit.CONTAIN, border_radius=8)
 
     resolution_dropdown = ft.Dropdown(
         label="Resolução do export aprimorado",
@@ -125,7 +129,7 @@ def main(page: ft.Page) -> None:
         ft.Text("Open Part", size=28, weight=ft.FontWeight.BOLD),
         ft.Text("Transforme suas imagens em pixel art", size=14, color=ft.Colors.GREY),
         ft.Divider(),
-        ft.ElevatedButton("Abrir imagem", icon=ft.Icons.FOLDER_OPEN, on_click=lambda _: open_picker.pick_files()),
+        ft.FilledButton("Abrir imagem", icon=ft.Icons.FOLDER_OPEN, on_click=lambda _: open_picker.pick_files()),
         ft.Row([ft.Text("Tamanho do pixel"), pixel_slider]),
         ft.Row([ft.Text("Cores"), colors_slider]),
         ft.Row([dither_switch]),
@@ -135,10 +139,10 @@ def main(page: ft.Page) -> None:
         ft.Divider(),
         ft.Text("Exportar aprimorado (enhance quality)", size=16, weight=ft.FontWeight.BOLD),
         resolution_dropdown,
-        ft.ElevatedButton("Exportar aprimorado", icon=ft.Icons.TUNE, on_click=save_enhanced),
+        ft.FilledButton("Exportar aprimorado", icon=ft.Icons.TUNE, on_click=save_enhanced),
         ft.Divider(),
         ft.Text("Exportar imagem original", size=16, weight=ft.FontWeight.BOLD),
-        ft.ElevatedButton("Exportar original", icon=ft.Icons.IMAGE, on_click=save_original),
+        ft.FilledButton("Exportar original", icon=ft.Icons.IMAGE, on_click=save_original),
     )
 
 
