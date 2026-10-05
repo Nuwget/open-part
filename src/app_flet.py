@@ -1,20 +1,19 @@
 """Interface gráfica moderna (Flet) do Open Part.
 
-Usa diálogos de arquivo nativos do sistema (Tkinter/zenity) em vez do
-FilePicker do Flet, por compatibilidade entre versões do cliente Flet.
+Layout em cartões: controles à esquerda, preview à direita, exportação
+embaixo. Diálogos de arquivo nativos de cada SO via src.dialogs.
 """
 
 from __future__ import annotations
 
 import io
-import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog
 
 import flet as ft
 from PIL import Image
 
 from src.core import pixelate
+from src.dialogs import pick_open_path, pick_save_path
 
 IMAGES_DIR = Path(__file__).resolve().parent.parent / "images"
 IMAGES_DIR.mkdir(exist_ok=True)
@@ -31,8 +30,6 @@ RESOLUTIONS = {
     "8K (UHD)": 4320,
 }
 
-IMAGE_TYPES = [("Imagens", "*.png *.jpg *.jpeg *.webp *.bmp *.gif")]
-
 
 def _png_bytes(image: Image.Image) -> bytes:
     buffer = io.BytesIO()
@@ -40,21 +37,27 @@ def _png_bytes(image: Image.Image) -> bytes:
     return buffer.getvalue()
 
 
-def _tk_root() -> tk.Tk:
-    root = tk.Tk()
-    root.withdraw()
-    return root
+def _card(title: str, *controls: ft.Control) -> ft.Card:
+    return ft.Card(
+        content=ft.Container(
+            content=ft.Column(
+                [ft.Text(title, size=16, weight=ft.FontWeight.BOLD), *controls],
+                spacing=12,
+            ),
+            padding=16,
+        )
+    )
 
 
 def main(page: ft.Page) -> None:
     page.title = "Open Part"
     page.theme_mode = ft.ThemeMode.DARK
-    page.padding = 20
+    page.padding = 24
     page.scroll = ft.ScrollMode.AUTO
 
     state: dict[str, Image.Image | None] = {"source": None, "result": None}
 
-    status = ft.Text("", color=ft.Colors.GREY)
+    status = ft.Text("", color=ft.Colors.GREY, semantics_label="Status")
 
     def notify(message: str) -> None:
         status.value = message
@@ -76,13 +79,7 @@ def main(page: ft.Page) -> None:
         page.update()
 
     def open_image(_: ft.ControlEvent) -> None:
-        root = _tk_root()
-        try:
-            path = filedialog.askopenfilename(
-                parent=root, initialdir=IMAGES_DIR, filetypes=IMAGE_TYPES
-            )
-        finally:
-            root.destroy()
+        path = pick_open_path(IMAGES_DIR, "Abrir Imagem", "Imagens")
         if not path:
             return
         try:
@@ -93,45 +90,30 @@ def main(page: ft.Page) -> None:
         notify(f"Aberto: {Path(path).name}")
         update_preview()
 
-    def export_original(_: ft.ControlEvent) -> None:
+    def _require_result() -> Image.Image | None:
         if state["result"] is None:
             notify("Abra uma imagem primeiro.")
+            return None
+        return state["result"]
+
+    def export_original(_: ft.ControlEvent) -> None:
+        result = _require_result()
+        if result is None:
             return
-        root = _tk_root()
-        try:
-            path = filedialog.asksaveasfilename(
-                parent=root,
-                initialdir=IMAGES_DIR,
-                initialfile="pixelart.png",
-                defaultextension=".png",
-                filetypes=[("PNG", "*.png")],
-            )
-        finally:
-            root.destroy()
+        path = pick_save_path(IMAGES_DIR, "Exportar imagem original", "pixelart.png")
         if not path:
             return
-        state["result"].save(path)
+        result.save(path)
         notify(f"Salvo em: {path}")
 
     def export_enhanced(_: ft.ControlEvent) -> None:
-        if state["result"] is None:
-            notify("Abra uma imagem primeiro.")
+        result = _require_result()
+        if result is None:
             return
-        root = _tk_root()
-        try:
-            path = filedialog.asksaveasfilename(
-                parent=root,
-                initialdir=IMAGES_DIR,
-                initialfile="pixelart_enhanced.png",
-                defaultextension=".png",
-                filetypes=[("PNG", "*.png")],
-            )
-        finally:
-            root.destroy()
+        path = pick_save_path(IMAGES_DIR, "Exportar aprimorado", "pixelart_enhanced.png")
         if not path:
             return
         target = RESOLUTIONS[resolution_dropdown.value]
-        result = state["result"]
         ratio = target / max(result.size)
         enlarged = result.resize(
             (max(1, int(result.width * ratio)), max(1, int(result.height * ratio))),
@@ -140,21 +122,36 @@ def main(page: ft.Page) -> None:
         enlarged.save(path)
         notify(f"Salvo aprimorado em: {path}")
 
+    def on_pixel_change(_: ft.ControlEvent) -> None:
+        pixel_value.value = str(int(pixel_slider.value))
+        update_preview()
+
+    def on_colors_change(_: ft.ControlEvent) -> None:
+        colors_value.value = str(int(colors_slider.value))
+        update_preview()
+
+    pixel_value = ft.Text("8", width=36, tooltip="Valor atual do tamanho do pixel")
     pixel_slider = ft.Slider(
         min=1, max=64, value=8, divisions=63, label="{value}",
-        on_change=lambda _: update_preview(),
+        expand=True, tooltip="Tamanho do bloco do pixel art",
+        on_change=on_pixel_change,
     )
+    colors_value = ft.Text("16", width=36, tooltip="Valor atual da paleta de cores")
     colors_slider = ft.Slider(
         min=2, max=256, value=16, divisions=254, label="{value}",
-        on_change=lambda _: update_preview(),
+        expand=True, tooltip="Quantidade máxima de cores",
+        on_change=on_colors_change,
     )
     dither_switch = ft.Switch(
-        label="Dithering", value=False, on_change=lambda _: update_preview()
+        label="Dithering", value=False,
+        tooltip="Suaviza transições com pontilhado (Floyd–Steinberg)",
+        on_change=lambda _: update_preview(),
     )
 
     preview_img = ft.Image(
         src="", width=PREVIEW_WIDTH, height=PREVIEW_HEIGHT,
         fit=ft.BoxFit.CONTAIN, border_radius=8,
+        semantics_label="Pré-visualização do pixel art",
     )
 
     resolution_dropdown = ft.Dropdown(
@@ -162,27 +159,54 @@ def main(page: ft.Page) -> None:
         value="1080p (Full HD)",
         options=[ft.dropdown.Option(label) for label in RESOLUTIONS],
         width=280,
+        tooltip="Tamanho do lado maior da imagem exportada",
     )
+
+    controls_card = _card(
+        "Ajustes",
+        ft.FilledButton(
+            "Abrir imagem", icon=ft.Icons.FOLDER_OPEN, on_click=open_image,
+            tooltip="Escolhe a imagem de entrada",
+        ),
+        ft.Text("Tamanho do pixel"),
+        ft.Row([pixel_slider, pixel_value]),
+        ft.Text("Cores"),
+        ft.Row([colors_slider, colors_value]),
+        dither_switch,
+    )
+    preview_card = _card("Preview", preview_img, status)
 
     page.add(
         ft.Text("Open Part", size=28, weight=ft.FontWeight.BOLD),
-        ft.Text("Transforme suas imagens em pixel art", size=14, color=ft.Colors.GREY),
-        status,
+        ft.Text(
+            "Transforme suas imagens em pixel art",
+            size=14, color=ft.Colors.GREY,
+        ),
         ft.Divider(),
-        ft.FilledButton("Abrir imagem", icon=ft.Icons.FOLDER_OPEN, on_click=open_image),
-        ft.Row([ft.Text("Tamanho do pixel"), pixel_slider]),
-        ft.Row([ft.Text("Cores"), colors_slider]),
-        ft.Row([dither_switch]),
-        ft.Divider(),
-        ft.Text("Preview", size=18, weight=ft.FontWeight.BOLD),
-        preview_img,
-        ft.Divider(),
-        ft.Text("Exportar aprimorado (enhance quality)", size=16, weight=ft.FontWeight.BOLD),
-        resolution_dropdown,
-        ft.FilledButton("Exportar aprimorado", icon=ft.Icons.TUNE, on_click=export_enhanced),
-        ft.Divider(),
-        ft.Text("Exportar imagem original", size=16, weight=ft.FontWeight.BOLD),
-        ft.FilledButton("Exportar original", icon=ft.Icons.IMAGE, on_click=export_original),
+        ft.Row(
+            [controls_card, preview_card],
+            spacing=16, run_spacing=16, wrap=True,
+            vertical_alignment=ft.CrossAxisAlignment.START,
+        ),
+        _card(
+            "Exportar",
+            resolution_dropdown,
+            ft.Row(
+                [
+                    ft.FilledButton(
+                        "Exportar aprimorado", icon=ft.Icons.TUNE,
+                        on_click=export_enhanced,
+                        tooltip="Salva ampliado na resolução escolhida",
+                    ),
+                    ft.FilledButton(
+                        "Exportar original", icon=ft.Icons.IMAGE,
+                        on_click=export_original,
+                        tooltip="Salva no tamanho original",
+                    ),
+                ],
+                wrap=True, spacing=12, run_spacing=12,
+            ),
+        ),
     )
 
 

@@ -2,22 +2,20 @@
 
 from __future__ import annotations
 
-import shutil
-import subprocess
-import sys
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import messagebox, ttk
 
 from PIL import Image, ImageTk
 
 from src.core import pixelate
+from src.dialogs import IMAGE_FILTERS, pick_open_path, pick_save_path
 
 PREVIEW_WIDTH = 640
 PREVIEW_HEIGHT = 480
 IMAGES_DIR = Path(__file__).resolve().parent.parent / "images"
 
-IMAGE_FILTERS = "*.png *.jpg *.jpeg *.webp *.bmp *.gif"
+IMAGE_FILTERS = IMAGE_FILTERS  # re-exportado de src.dialogs
 
 STRINGS = {
     "pt": {
@@ -50,59 +48,6 @@ STRINGS = {
     },
 }
 
-
-def _zenity_file_dialog(args: list[str]) -> str | None:
-    try:
-        completed = subprocess.run(
-            ["zenity", *args], capture_output=True, text=True, check=False
-        )
-    except FileNotFoundError:
-        return None
-    if completed.returncode != 0:
-        return ""  # usuário cancelou
-    return completed.stdout.strip()
-
-
-def pick_open_path(initial_dir: Path, lang: str = "pt") -> str:
-    """Abre o seletor de arquivos nativo do sistema."""
-    t = STRINGS[lang]
-    if sys.platform.startswith("linux") and shutil.which("zenity"):
-        picked = _zenity_file_dialog(
-            [
-                "--file-selection",
-                f"--filename={initial_dir}/",
-                f"--title={t['open']}",
-                f"--file-filter={t['images']} | {IMAGE_FILTERS}",
-            ]
-        )
-        if picked is not None:
-            return picked
-    return filedialog.askopenfilename(
-        initialdir=initial_dir,
-        filetypes=[(t["images"], IMAGE_FILTERS)],
-    )
-
-
-def pick_save_path(initial_dir: Path, lang: str = "pt") -> str:
-    """Abre o seletor de salvamento nativo do sistema."""
-    t = STRINGS[lang]
-    if sys.platform.startswith("linux") and shutil.which("zenity"):
-        picked = _zenity_file_dialog(
-            [
-                "--file-selection",
-                "--save",
-                f"--filename={initial_dir}/pixelart.png",
-                f"--title={t['save']}",
-                "--file-filter=PNG | *.png",
-            ]
-        )
-        if picked is not None:
-            return picked
-    return filedialog.asksaveasfilename(
-        initialdir=initial_dir,
-        defaultextension=".png",
-        filetypes=[("PNG", "*.png")],
-    )
 
 
 class PixelArtApp:
@@ -189,7 +134,7 @@ class PixelArtApp:
         self.lbl_language.configure(text=t["language"])
 
     def open_image(self) -> None:
-        path = pick_open_path(IMAGES_DIR, self.lang.get())
+        path = pick_open_path(IMAGES_DIR, self._t("open"), self._t("images"))
         if not path:
             return
         try:
@@ -222,7 +167,7 @@ class PixelArtApp:
         if self.result is None:
             messagebox.showinfo(self._t("warn"), self._t("open_first"))
             return
-        path = pick_save_path(IMAGES_DIR, self.lang.get())
+        path = pick_save_path(IMAGES_DIR, self._t("save"), "pixelart.png")
         if not path:
             return
         try:
