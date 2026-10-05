@@ -2,15 +2,15 @@
 
 Transformador de imagens em pixel art para Linux e Windows.
 
-Versão alfa: interface gráfica (Tkinter + Pillow) que abre uma imagem,
-aplica o efeito pixel art com tamanho de bloco ajustável e permite salvar
-o resultado (PNG com transparência preservada).
+Versão alfa: interface gráfica moderna com **Flet** + Pillow. Abre uma imagem,
+aplica pixel art com blocos e paleta ajustáveis, preview fixo, e permite
+exportar na resolução original ou aprimorada (upscaled).
 
 ## Requisitos
 
 - Python 3.10+
 - Pillow
-- Tkinter (`apt install python3-tk` no Linux; já vem com o Python no Windows)
+- Flet
 
 ## Instalação
 
@@ -40,9 +40,10 @@ python3 -m venv .venv
 ## Arquitetura
 
 ```
-main.py            # ponto de entrada
+main.py            # ponto de entrada (Flet)
 src/core.py        # lógica de pixelização (pura, testável, sem GUI)
-src/gui.py         # interface gráfica (Tkinter)
+src/app_flet.py    # interface gráfica (Flet)
+src/gui.py         # interface antiga (Tkinter), mantida como referência
 ```
 
 ## Status
